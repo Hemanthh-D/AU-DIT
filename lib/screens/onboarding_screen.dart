@@ -1,8 +1,35 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:smooth_page_indicator/smooth_page_indicator.dart';
 
-class OnboardingScreen extends StatelessWidget {
+class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});
+
+  @override
+  State<OnboardingScreen> createState() => _OnboardingScreenState();
+}
+
+class _OnboardingScreenState extends State<OnboardingScreen> {
+  final PageController _controller = PageController();
+  int currentIndex = 0;
+
+  final pages = [
+    {
+      "image": "assets/image.png",
+      "title": "Welcome to AU-DIT",
+      "desc": "AI-powered complaint management for your campus",
+    },
+    {
+      "image": "assets/image.png",
+      "title": "Track Complaints",
+      "desc": "Real-time updates & technician tracking",
+    },
+    {
+      "image": "assets/image.png",
+      "title": "Fast Resolution",
+      "desc": "Get issues resolved quickly & efficiently",
+    },
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -13,127 +40,139 @@ class OnboardingScreen extends StatelessWidget {
       body: SafeArea(
         child: Column(
           children: [
-            // 🔝 SKIP BUTTON
+            // 🔝 SKIP
             Align(
               alignment: Alignment.topRight,
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: TextButton(
                   onPressed: () => context.go('/login'),
-                  child: Text(
-                    "Skip",
-                    style: TextStyle(
-                      color: scheme.primary,
-                      fontWeight: FontWeight.w600,
+                  child: const Text("Skip"),
+                ),
+              ),
+            ),
+
+            // 📱 PAGES
+            Expanded(
+              child: PageView.builder(
+                controller: _controller,
+                itemCount: pages.length,
+                onPageChanged: (index) {
+                  setState(() => currentIndex = index);
+                },
+                itemBuilder: (context, index) {
+                  final page = pages[index];
+
+                  return AnimatedBuilder(
+                    animation: _controller,
+                    builder: (context, child) {
+                      double value = 1.0;
+
+                      if (_controller.position.haveDimensions) {
+                        value = _controller.page! - index;
+                        value = (1 - (value.abs() * 0.3)).clamp(0.0, 1.0);
+                      }
+
+                      return Transform.scale(
+                        scale: value,
+                        child: Opacity(
+                          opacity: value,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 24),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                // 🖼 IMAGE
+                                Expanded(
+                                  child: Image.asset(
+                                    page["image"]!,
+                                    fit: BoxFit.contain,
+                                    errorBuilder: (_, __, ___) =>
+                                        const Icon(Icons.image, size: 100),
+                                  ),
+                                ),
+
+                                const SizedBox(height: 20),
+
+                                // 📝 TITLE
+                                Text(
+                                  page["title"]!,
+                                  textAlign: TextAlign.center,
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .headlineSmall
+                                      ?.copyWith(fontWeight: FontWeight.w800),
+                                ),
+
+                                const SizedBox(height: 10),
+
+                                // 📄 DESCRIPTION
+                                Text(
+                                  page["desc"]!,
+                                  textAlign: TextAlign.center,
+                                  style: Theme.of(context).textTheme.bodyMedium
+                                      ?.copyWith(
+                                        color: scheme.onSurfaceVariant,
+                                      ),
+                                ),
+
+                                const SizedBox(height: 40),
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  );
+                },
+              ),
+            ),
+
+            // 🔘 DOT INDICATOR
+            SmoothPageIndicator(
+              controller: _controller,
+              count: pages.length,
+              effect: WormEffect(
+                dotHeight: 8,
+                dotWidth: 8,
+                activeDotColor: scheme.primary,
+              ),
+            ),
+
+            const SizedBox(height: 24),
+
+            // 🚀 BUTTON
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: SizedBox(
+                width: double.infinity,
+                height: 55,
+                child: FilledButton(
+                  onPressed: () {
+                    if (currentIndex == pages.length - 1) {
+                      context.go('/login');
+                    } else {
+                      _controller.nextPage(
+                        duration: const Duration(milliseconds: 400),
+                        curve: Curves.easeInOut,
+                      );
+                    }
+                  },
+                  style: FilledButton.styleFrom(
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(30),
                     ),
+                  ),
+                  child: Text(
+                    currentIndex == pages.length - 1 ? "Get Started" : "Next",
                   ),
                 ),
               ),
             ),
 
-            // 🖼 IMAGE (SAFE VERSION)
-            Expanded(
-              flex: 5,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
-                child: Image.asset(
-                  'assets/image.png',
-                  fit: BoxFit.contain,
-
-                  // ✅ VERY IMPORTANT (prevents crash if asset missing)
-                  errorBuilder: (context, error, stackTrace) {
-                    return const Center(
-                      child: Icon(Icons.image_not_supported, size: 80),
-                    );
-                  },
-                ),
-              ),
-            ),
-
-            // 📝 TEXT SECTION
-            Expanded(
-              flex: 3,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
-                child: Column(
-                  children: [
-                    Text(
-                      "Welcome to AU-DIT",
-                      textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.headlineSmall
-                          ?.copyWith(fontWeight: FontWeight.w800),
-                    ),
-
-                    const SizedBox(height: 10),
-
-                    Text(
-                      "Smart complaint management for campus with AI support",
-                      textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: scheme.onSurfaceVariant,
-                      ),
-                    ),
-
-                    const Spacer(),
-
-                    // 🔘 DOT INDICATOR
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        _dot(true, scheme),
-                        _dot(false, scheme),
-                        _dot(false, scheme),
-                      ],
-                    ),
-
-                    const SizedBox(height: 24),
-
-                    // 🚀 GET STARTED BUTTON
-                    SizedBox(
-                      width: double.infinity,
-                      height: 55,
-                      child: FilledButton(
-                        onPressed: () {
-                          context.go('/login');
-                        },
-                        style: FilledButton.styleFrom(
-                          backgroundColor: scheme.primary,
-                          foregroundColor: scheme.onPrimary,
-                          elevation: 2,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(30),
-                          ),
-                        ),
-                        child: const Text(
-                          "Get Started",
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                    ),
-
-                    const SizedBox(height: 24),
-                  ],
-                ),
-              ),
-            ),
+            const SizedBox(height: 30),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _dot(bool active, ColorScheme scheme) {
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 300),
-      margin: const EdgeInsets.symmetric(horizontal: 4),
-      height: 8,
-      width: active ? 20 : 8,
-      decoration: BoxDecoration(
-        color: active ? scheme.primary : scheme.outlineVariant,
-        borderRadius: BorderRadius.circular(10),
       ),
     );
   }
