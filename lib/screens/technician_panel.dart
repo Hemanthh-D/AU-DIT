@@ -1,11 +1,13 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 
 import '../core/session/session_provider.dart';
+import '../core/ui/app_colors.dart';
 import '../core/ui/app_messenger.dart';
 import '../core/ui/app_spacing.dart';
 import '../models/app_notification.dart';
@@ -30,48 +32,98 @@ class _TechnicianPanelState extends State<TechnicianPanel> {
     });
   }
 
+  void _showProfile(BuildContext context) {
+    final session = context.read<SessionProvider>();
+    showModalBottomSheet(
+      context: context,
+      showDragHandle: true,
+      builder: (context) {
+        return SafeArea(
+          child: ListView(
+            padding: const EdgeInsets.all(AppSpacing.lg),
+            children: [
+              Text(
+                session.email ?? "Technician",
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
+              ),
+              const SizedBox(height: AppSpacing.md),
+              Text(
+                "Technician ID: ${session.technicianId}",
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: AppSpacing.lg),
+              SwitchListTile(
+                value: session.darkMode,
+                onChanged: session.setDarkMode,
+                secondary: const Icon(Icons.dark_mode_outlined),
+                title: const Text("Dark mode"),
+              ),
+              const Divider(),
+              ListTile(
+                leading: const Icon(Icons.logout_rounded),
+                title: const Text("Log out"),
+                onTap: () {
+                  session.logout();
+                  context.go('/login');
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final session = context.watch<SessionProvider>();
     final provider = context.watch<ComplaintProvider>();
     final techId = session.technicianId;
-    final assigned = provider.complaints
-        .where(
-          (c) =>
-              c.assignedTechnicianId == techId &&
-              (c.status == ComplaintStatus.assigned ||
-                  c.status == ComplaintStatus.inProgress),
-        )
-        .toList()
-      ..sort((a, b) => b.submittedAt.compareTo(a.submittedAt));
+    final assigned =
+        provider.complaints
+            .where(
+              (c) =>
+                  c.assignedTechnicianId == techId &&
+                  (c.status == ComplaintStatus.assigned ||
+                      c.status == ComplaintStatus.inProgress),
+            )
+            .toList()
+          ..sort((a, b) => b.submittedAt.compareTo(a.submittedAt));
 
     final queuedIds = provider.queueFor(techId);
     final queued = queuedIds
-        .map(
-          (id) => provider.complaints.cast<Complaint?>().firstWhere(
-                (c) => c?.id == id,
-                orElse: () => null,
-              ),
-        )
+        .map((id) {
+          try {
+            return provider.complaints.firstWhere((c) => c.id == id);
+          } catch (_) {
+            return null;
+          }
+        })
         .whereType<Complaint>()
         .toList();
 
-    final resolved = provider.complaints
-        .where(
-          (c) =>
-              c.assignedTechnicianId == techId &&
-              c.status == ComplaintStatus.resolved,
-        )
-        .toList()
-      ..sort((a, b) => b.submittedAt.compareTo(a.submittedAt));
+    final resolved =
+        provider.complaints
+            .where(
+              (c) =>
+                  c.assignedTechnicianId == techId &&
+                  c.status == ComplaintStatus.resolved,
+            )
+            .toList()
+          ..sort((a, b) => b.submittedAt.compareTo(a.submittedAt));
 
     final initialIndex = assigned.isNotEmpty
         ? 0
         : queued.isNotEmpty
-            ? 1
-            : resolved.isNotEmpty
-                ? 2
-                : 0;
+        ? 1
+        : resolved.isNotEmpty
+        ? 2
+        : 0;
 
     return DefaultTabController(
       length: 3,
@@ -82,16 +134,43 @@ class _TechnicianPanelState extends State<TechnicianPanel> {
           elevation: 0,
           scrolledUnderElevation: 4,
           backgroundColor: Theme.of(context).colorScheme.surface,
-          title: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          title: Row(
             children: [
-              Text(techId == 'Counselor' ? 'Counselor Portal' : 'Technician ($techId)'),
-              Text(
-                "${assigned.length} active • ${queued.length} queued • ${resolved.length} resolved",
-                style: Theme.of(context)
-                    .textTheme
-                    .labelSmall
-                    ?.copyWith(fontWeight: FontWeight.w700),
+              Container(
+                height: 36,
+                width: 36,
+                decoration: BoxDecoration(
+                  color: AppColors.info.withAlpha(25),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(
+                  Icons.engineering_rounded,
+                  color: AppColors.info,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      techId == 'Counselor' ? 'Counselor Portal' : 'Technician',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 16,
+                      ),
+                    ),
+                    Text(
+                      "${assigned.length} active • ${queued.length} queued • ${resolved.length} resolved",
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
@@ -100,74 +179,24 @@ class _TechnicianPanelState extends State<TechnicianPanel> {
             IconButton(
               tooltip: "Profile",
               icon: const Icon(Icons.person_outline_rounded),
-              onPressed: () {
-                showModalBottomSheet(
-                  context: context,
-                  showDragHandle: true,
-                  builder: (context) {
-                    return SafeArea(
-                      child: ListView(
-                        padding: const EdgeInsets.all(AppSpacing.lg),
-                        children: [
-                          Text(
-                            session.email ?? "Technician",
-                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                  fontWeight: FontWeight.w900,
-                                ),
-                          ),
-                          const SizedBox(height: AppSpacing.md),
-                          Text(
-                            "Technician ID: ${session.technicianId}",
-                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                          ),
-                          const SizedBox(height: AppSpacing.lg),
-                          SwitchListTile(
-                            value: session.darkMode,
-                            onChanged: session.setDarkMode,
-                            secondary: const Icon(Icons.dark_mode_outlined),
-                            title: const Text("Dark mode"),
-                          ),
-                          const Divider(),
-                          ListTile(
-                            leading: const Icon(Icons.logout_rounded),
-                            title: const Text("Log out"),
-                            onTap: () {
-                              session.logout();
-                              context.go('/login');
-                            },
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                );
-              },
-            ),
-            IconButton(
-              tooltip: "Log out",
-              icon: const Icon(Icons.logout_rounded),
-              onPressed: () {
-                session.logout();
-                context.go('/login');
-              },
+              onPressed: () => _showProfile(context),
             ),
           ],
-          bottom: const TabBar(
+          bottom: TabBar(
+            indicatorColor: Theme.of(context).colorScheme.primary,
+            labelStyle: const TextStyle(fontWeight: FontWeight.w800),
             tabs: [
-              Tab(text: "Assigned"),
-              Tab(text: "Queue"),
-              Tab(text: "Resolved"),
+              Tab(text: "Assigned (${assigned.length})"),
+              Tab(text: "Queue (${queued.length})"),
+              Tab(text: "Resolved (${resolved.length})"),
             ],
           ),
         ),
         body: TabBarView(
           children: [
-            SizedBox.expand(child: _TaskList(tasks: assigned, techId: techId)),
-            SizedBox.expand(child: _QueueList(queued: queued)),
-            SizedBox.expand(child: _ResolvedList(resolved: resolved)),
+            _TaskList(tasks: assigned, techId: techId),
+            _QueueList(queued: queued),
+            _ResolvedList(resolved: resolved),
           ],
         ),
       ),
@@ -184,42 +213,80 @@ class _TaskList extends StatelessWidget {
   Widget build(BuildContext context) {
     if (tasks.isEmpty) {
       return Center(
-        child: Text(
-          "No active tasks yet for $techId.\nSubmit a complaint from the student side first.",
-          textAlign: TextAlign.center,
-          style: const TextStyle(color: Colors.grey, fontWeight: FontWeight.w600),
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.xl),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                height: 64,
+                width: 64,
+                decoration: BoxDecoration(
+                  color: AppColors.indigoTint,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: const Icon(
+                  Icons.assignment_outlined,
+                  color: AppColors.info,
+                  size: 32,
+                ),
+              ),
+              const SizedBox(height: AppSpacing.md),
+              Text(
+                "No active tasks",
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              Text(
+                "Complaints assigned to you will appear here",
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
         ),
       );
     }
-    return ListView.separated(
+    return ListView.builder(
       padding: const EdgeInsets.all(AppSpacing.lg),
       itemCount: tasks.length,
-      separatorBuilder: (context, index) =>
-          const SizedBox(height: AppSpacing.md),
       itemBuilder: (context, index) {
         final task = tasks[index];
-        return ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: 96),
+        return Padding(
+          padding: const EdgeInsets.only(bottom: AppSpacing.md),
           child: _ComplaintCard(
-          complaint: task,
-          trailing: FilledButton(
-            onPressed: () {
-              if (task.status == ComplaintStatus.assigned) {
-                context.read<ComplaintProvider>().startWork(
-                      complaintId: task.id,
-                      technicianId: techId,
-                    );
-                _notifyStudent(context, task.studentId, task.id, NotificationType.workStarted,
-                    'Work started', '$techId has started working on your complaint ${task.id}.');
-                AppMessenger.showSnack("Started work on ${task.id}");
-              } else {
-                _resolveFlow(context, task, techId);
-              }
-            },
-                child: Text(task.status == ComplaintStatus.assigned ? 'Start' : 'Resolve'),
+            complaint: task,
+            trailing: FilledButton(
+              onPressed: () {
+                HapticFeedback.lightImpact();
+                if (task.status == ComplaintStatus.assigned) {
+                  context.read<ComplaintProvider>().startWork(
+                    complaintId: task.id,
+                    technicianId: techId,
+                  );
+                  _notifyStudent(
+                    context,
+                    task.studentId,
+                    task.id,
+                    NotificationType.workStarted,
+                    'Work started',
+                    '$techId has started working on your complaint ${task.id}.',
+                  );
+                  AppMessenger.showSnack("Started work on ${task.id}");
+                } else {
+                  _resolveFlow(context, task, techId);
+                }
+              },
+              child: Text(
+                task.status == ComplaintStatus.assigned ? 'Start' : 'Resolve',
+              ),
+            ),
+            onTap: () => _showDetails(context, task, techId),
           ),
-          onTap: () => _showDetails(context, task, techId),
-        ),
         );
       },
     );
@@ -234,7 +301,11 @@ class _TaskList extends StatelessWidget {
     );
   }
 
-  Future<void> _resolveFlow(BuildContext context, Complaint c, String techId) async {
+  Future<void> _resolveFlow(
+    BuildContext context,
+    Complaint c,
+    String techId,
+  ) async {
     final complaintProvider = context.read<ComplaintProvider>();
     final picker = ImagePicker();
     final picked = await picker.pickMultiImage();
@@ -275,8 +346,14 @@ class _TaskList extends StatelessWidget {
       technicianId: techId,
       afterImagePaths: paths,
     );
-    _notifyStudent(context, c.studentId, c.id, NotificationType.resolved,
-        'Resolved', 'Your complaint ${c.id} has been resolved. Please rate your experience.');
+    _notifyStudent(
+      context,
+      c.studentId,
+      c.id,
+      NotificationType.resolved,
+      'Resolved',
+      'Your complaint ${c.id} has been resolved. Please rate your experience.',
+    );
     AppMessenger.showSnack("Resolved ${c.id} (fixed photos attached).");
 
     // Optional: immediately close after resolution (matches your UX request).
@@ -287,7 +364,7 @@ class _TaskList extends StatelessWidget {
         return AlertDialog(
           title: const Text("Close ticket"),
           content: const Text(
-            "Do you want to close this ticket now after confirming the fixed photos?",
+            "Do you want to close this ticket now after confirming fixed photos?",
           ),
           actions: [
             TextButton(
@@ -306,22 +383,36 @@ class _TaskList extends StatelessWidget {
     if (closeConfirmed != true) return;
     if (!context.mounted) return;
     complaintProvider.closeComplaint(complaintId: c.id);
-    _notifyStudent(context, c.studentId, c.id, NotificationType.closed,
-        'Closed', 'Your complaint ${c.id} has been closed.');
+    _notifyStudent(
+      context,
+      c.studentId,
+      c.id,
+      NotificationType.closed,
+      'Closed',
+      'Your complaint ${c.id} has been closed.',
+    );
     AppMessenger.showSnack("Closed ${c.id}");
   }
 
-  void _notifyStudent(BuildContext context, String studentId, String complaintId,
-      NotificationType type, String title, String body) {
-    context.read<NotificationProvider>().add(AppNotification(
-          id: 'n-${DateTime.now().millisecondsSinceEpoch}',
-          complaintId: complaintId,
-          type: type,
-          title: title,
-          body: body,
-          createdAt: DateTime.now(),
-          studentId: studentId,
-        ));
+  void _notifyStudent(
+    BuildContext context,
+    String studentId,
+    String complaintId,
+    NotificationType type,
+    String title,
+    String body,
+  ) {
+    context.read<NotificationProvider>().add(
+      AppNotification(
+        id: 'n-${DateTime.now().millisecondsSinceEpoch}',
+        complaintId: complaintId,
+        type: type,
+        title: title,
+        body: body,
+        createdAt: DateTime.now(),
+        studentId: studentId,
+      ),
+    );
   }
 }
 
@@ -332,35 +423,93 @@ class _QueueList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (queued.isEmpty) {
-      return const Center(
-        child: Text(
-          "Queue is empty.",
-          style: TextStyle(color: Colors.grey),
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.xl),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                height: 64,
+                width: 64,
+                decoration: BoxDecoration(
+                  color: AppColors.warn.withAlpha(25),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: const Icon(
+                  Icons.schedule_outlined,
+                  color: AppColors.warn,
+                  size: 32,
+                ),
+              ),
+              const SizedBox(height: AppSpacing.md),
+              Text(
+                "Queue is empty",
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              Text(
+                "No complaints waiting for assignment",
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
         ),
       );
     }
-    return ListView.separated(
+    return ListView.builder(
       padding: const EdgeInsets.all(AppSpacing.lg),
       itemCount: queued.length,
-      separatorBuilder: (context, index) =>
-          const SizedBox(height: AppSpacing.md),
       itemBuilder: (context, index) {
         final c = queued[index];
-        return ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: 96),
+        return Padding(
+          padding: const EdgeInsets.only(bottom: AppSpacing.md),
           child: _ComplaintCard(
-          complaint: c,
-          trailing: const Padding(
-            padding: EdgeInsets.only(right: 8),
-            child: Icon(Icons.schedule_outlined),
+            complaint: c,
+            trailing: SizedBox(
+              width: 90, // 👈 IMPORTANT
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: AppColors.warn.withAlpha(25),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(
+                      Icons.schedule_outlined,
+                      color: AppColors.warn,
+                      size: 16,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      "#${index + 1}",
+                      style: const TextStyle(
+                        color: AppColors.warn,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            onTap: () => showModalBottomSheet(
+              context: context,
+              showDragHandle: true,
+              isScrollControlled: true,
+              builder: (_) =>
+                  _ComplaintDetails(complaint: c, queuePosition: index + 1),
+            ),
           ),
-          onTap: () => showModalBottomSheet(
-            context: context,
-            showDragHandle: true,
-            isScrollControlled: true,
-            builder: (_) => _ComplaintDetails(complaint: c, queuePosition: index + 1),
-          ),
-        ),
         );
       },
     );
@@ -374,84 +523,116 @@ class _ResolvedList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (resolved.isEmpty) {
-      return const Center(
-        child: Text(
-          "No resolved tasks yet.",
-          style: TextStyle(color: Colors.grey),
-        ),
-      );
-    }
-    return ListView.separated(
-      padding: const EdgeInsets.all(AppSpacing.lg),
-      itemCount: resolved.length,
-      separatorBuilder: (context, index) =>
-          const SizedBox(height: AppSpacing.md),
-      itemBuilder: (context, index) {
-        final c = resolved[index];
-        return ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: 96),
-          child: _ComplaintCard(
-          complaint: c,
-          trailing: Row(
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.xl),
+          child: Column(
             mainAxisSize: MainAxisSize.min,
-            mainAxisAlignment: MainAxisAlignment.end,
             children: [
-              FilledButton.tonal(
-                onPressed: () => showModalBottomSheet(
-                  context: context,
-                  showDragHandle: true,
-                  isScrollControlled: true,
-                  builder: (_) => _ComplaintDetails(complaint: c),
+              Container(
+                height: 64,
+                width: 64,
+                decoration: BoxDecoration(
+                  color: AppColors.success.withAlpha(25),
+                  borderRadius: BorderRadius.circular(16),
                 ),
-                child: const Text("View"),
+                child: const Icon(
+                  Icons.check_circle_outline,
+                  color: AppColors.success,
+                  size: 32,
+                ),
               ),
-              const SizedBox(width: 8),
-              IconButton(
-                tooltip: "Close ticket",
-                icon: const Icon(Icons.check_circle_outline_rounded),
-                style: IconButton.styleFrom(padding: const EdgeInsets.all(8)),
-                onPressed: () {
-                  final complaintProvider =
-                      context.read<ComplaintProvider>();
-                  showDialog<bool>(
-                    context: context,
-                    builder: (context) {
-                      return AlertDialog(
-                        title: const Text("Close ticket"),
-                        content: const Text(
-                          "Are you sure the issue is fully resolved? This will close the ticket.",
-                        ),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.of(context).pop(false),
-                            child: const Text("Cancel"),
-                          ),
-                          FilledButton(
-                            onPressed: () => Navigator.of(context).pop(true),
-                            child: const Text("Close"),
-                          ),
-                        ],
-                      );
-                    },
-                  ).then((confirmed) {
-                    if (confirmed == true) {
-                      complaintProvider.closeComplaint(complaintId: c.id);
-                      AppMessenger.showSnack("Closed ${c.id}");
-                    }
-                  });
-                },
+              const SizedBox(height: AppSpacing.md),
+              Text(
+                "No resolved tasks",
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              Text(
+                "Completed complaints will appear here",
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ),
             ],
           ),
-          onTap: () {
-            showModalBottomSheet(
-              context: context,
-              showDragHandle: true,
-              isScrollControlled: true,
-              builder: (_) => _ComplaintDetails(complaint: c),
-            );
-          },
         ),
+      );
+    }
+    return ListView.builder(
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      itemCount: resolved.length,
+      itemBuilder: (context, index) {
+        final c = resolved[index];
+        return Padding(
+          padding: const EdgeInsets.only(bottom: AppSpacing.md),
+          child: _ComplaintCard(
+            complaint: c,
+            trailing: SizedBox(
+              width: 110, // IMPORTANT FIX
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  FilledButton.tonal(
+                    onPressed: () => showModalBottomSheet(
+                      context: context,
+                      showDragHandle: true,
+                      isScrollControlled: true,
+                      builder: (_) => _ComplaintDetails(complaint: c),
+                    ),
+                    child: const Text("View"),
+                  ),
+                  const SizedBox(height: 6),
+                  IconButton(
+                    tooltip: "Close ticket",
+                    icon: const Icon(Icons.check_circle_outline_rounded),
+                    onPressed: () {
+                      final complaintProvider = context
+                          .read<ComplaintProvider>();
+                      showDialog<bool>(
+                        context: context,
+                        builder: (context) {
+                          return AlertDialog(
+                            title: const Text("Close ticket"),
+                            content: const Text(
+                              "Are you sure issue is fully resolved?",
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () =>
+                                    Navigator.of(context).pop(false),
+                                child: const Text("Cancel"),
+                              ),
+                              FilledButton(
+                                onPressed: () =>
+                                    Navigator.of(context).pop(true),
+                                child: const Text("Close"),
+                              ),
+                            ],
+                          );
+                        },
+                      ).then((confirmed) {
+                        if (confirmed == true) {
+                          complaintProvider.closeComplaint(complaintId: c.id);
+                          AppMessenger.showSnack("Closed ${c.id}");
+                        }
+                      });
+                    },
+                  ),
+                ],
+              ),
+            ),
+            onTap: () {
+              showModalBottomSheet(
+                context: context,
+                showDragHandle: true,
+                isScrollControlled: true,
+                builder: (_) => _ComplaintDetails(complaint: c),
+              );
+            },
+          ),
         );
       },
     );
@@ -472,93 +653,87 @@ class _ComplaintCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+
     return Container(
+      margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: scheme.surface,
-        borderRadius: BorderRadius.circular(20),
+        gradient: LinearGradient(
+          colors: [scheme.surfaceContainerHighest, scheme.surface],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(22),
         border: Border.all(color: scheme.outlineVariant.withAlpha(120)),
         boxShadow: [
           BoxShadow(
-            color: scheme.shadow.withAlpha(15),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
+            color: scheme.shadow.withAlpha(25),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
           ),
         ],
       ),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
+          borderRadius: BorderRadius.circular(22),
           onTap: onTap,
-          borderRadius: BorderRadius.circular(20),
           child: Padding(
-            padding: const EdgeInsets.all(AppSpacing.md),
+            padding: const EdgeInsets.all(16),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-              Container(
-                height: 44,
-                width: 44,
-                decoration: BoxDecoration(
-                  color: scheme.primary.withAlpha(18),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: scheme.outlineVariant),
-                ),
-                child: Center(
-                  child: Text(
-                    complaint.priority.name.toUpperCase().substring(0, 1),
-                    style: TextStyle(
-                      color: scheme.primary,
-                      fontWeight: FontWeight.w900,
+                // ICON
+                Container(
+                  height: 48,
+                  width: 48,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        scheme.primary.withAlpha(60),
+                        scheme.primary.withAlpha(20),
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Center(
+                    child: Text(
+                      complaint.priority.name[0].toUpperCase(),
+                      style: TextStyle(
+                        color: scheme.primary,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
                     ),
                   ),
                 ),
-              ),
-              const SizedBox(width: AppSpacing.md),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Row(
-                      children: [
-                        Flexible(
-                          child: Text(
-                            "${complaint.categoryLabel} • ${complaint.block} ${complaint.room}",
-                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                  fontWeight: FontWeight.w800,
-                                ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        if (complaint.isEscalated) ...[
-                          const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: Colors.orange.shade100,
-                              borderRadius: BorderRadius.circular(999),
-                            ),
-                            child: Text('ESCALATED', style: TextStyle(
-                                fontSize: 10, fontWeight: FontWeight.w900, color: Colors.orange.shade900)),
-                          ),
-                        ],
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      complaint.description,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: scheme.onSurfaceVariant,
-                            fontWeight: FontWeight.w600,
-                          ),
-                    ),
-                  ],
+
+                const SizedBox(width: 14),
+
+                // TEXT
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        "${complaint.categoryLabel} • ${complaint.block} ${complaint.room}",
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w800),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        complaint.description,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(color: scheme.onSurfaceVariant),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-                const SizedBox(width: AppSpacing.sm),
-                trailing,
+
+                const SizedBox(width: 10),
+
+                // BUTTON (FIXED WIDTH ✅)
+                SizedBox(width: 110, child: trailing),
               ],
             ),
           ),
@@ -569,10 +744,7 @@ class _ComplaintCard extends StatelessWidget {
 }
 
 class _ComplaintDetails extends StatefulWidget {
-  const _ComplaintDetails({
-    required this.complaint,
-    this.queuePosition,
-  });
+  const _ComplaintDetails({required this.complaint, this.queuePosition});
   final Complaint complaint;
   final int? queuePosition;
 
@@ -586,18 +758,20 @@ class _ComplaintDetailsState extends State<_ComplaintDetails> {
   Future<void> _startWork(Complaint c, String techId) async {
     if (!context.mounted) return;
     context.read<ComplaintProvider>().startWork(
-          complaintId: c.id,
-          technicianId: techId,
-        );
-    context.read<NotificationProvider>().add(AppNotification(
-          id: 'n-${DateTime.now().millisecondsSinceEpoch}',
-          complaintId: c.id,
-          type: NotificationType.workStarted,
-          title: 'Work started',
-          body: '$techId has started working on your complaint ${c.id}.',
-          createdAt: DateTime.now(),
-          studentId: c.studentId,
-        ));
+      complaintId: c.id,
+      technicianId: techId,
+    );
+    context.read<NotificationProvider>().add(
+      AppNotification(
+        id: 'n-${DateTime.now().millisecondsSinceEpoch}',
+        complaintId: c.id,
+        type: NotificationType.workStarted,
+        title: 'Work started',
+        body: '$techId has started working on your complaint ${c.id}.',
+        createdAt: DateTime.now(),
+        studentId: c.studentId,
+      ),
+    );
     AppMessenger.showSnack("Started work on ${c.id}");
     Navigator.pop(context);
   }
@@ -650,15 +824,18 @@ class _ComplaintDetailsState extends State<_ComplaintDetails> {
       technicianId: techId,
       afterImagePaths: paths,
     );
-    context.read<NotificationProvider>().add(AppNotification(
-          id: 'n-${DateTime.now().millisecondsSinceEpoch}',
-          complaintId: c.id,
-          type: NotificationType.resolved,
-          title: 'Resolved',
-          body: 'Your complaint ${c.id} has been resolved. Please rate your experience.',
-          createdAt: DateTime.now(),
-          studentId: c.studentId,
-        ));
+    context.read<NotificationProvider>().add(
+      AppNotification(
+        id: 'n-${DateTime.now().millisecondsSinceEpoch}',
+        complaintId: c.id,
+        type: NotificationType.resolved,
+        title: 'Resolved',
+        body:
+            'Your complaint ${c.id} has been resolved. Please rate your experience.',
+        createdAt: DateTime.now(),
+        studentId: c.studentId,
+      ),
+    );
     setState(() => _isResolving = false);
     AppMessenger.showSnack("Resolved ${c.id} with fixed photos.");
 
@@ -667,7 +844,9 @@ class _ComplaintDetailsState extends State<_ComplaintDetails> {
       builder: (context) {
         return AlertDialog(
           title: const Text("Close ticket"),
-          content: const Text("Close the ticket now after confirming fixed photos?"),
+          content: const Text(
+            "Close ticket now after confirming fixed photos?",
+          ),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(false),
@@ -697,10 +876,16 @@ class _ComplaintDetailsState extends State<_ComplaintDetails> {
     final techId = context.watch<SessionProvider>().technicianId;
     final c = widget.complaint;
 
-    final canStart = c.assignedTechnicianId == techId && c.status == ComplaintStatus.assigned;
-    final canResolve = c.assignedTechnicianId == techId &&
-        (c.status == ComplaintStatus.assigned || c.status == ComplaintStatus.inProgress);
-    final canClose = c.assignedTechnicianId == techId && c.status == ComplaintStatus.resolved;
+    final canStart =
+        c.assignedTechnicianId == techId &&
+        c.status == ComplaintStatus.assigned;
+    final canResolve =
+        c.assignedTechnicianId == techId &&
+        (c.status == ComplaintStatus.assigned ||
+            c.status == ComplaintStatus.inProgress);
+    final canClose =
+        c.assignedTechnicianId == techId &&
+        c.status == ComplaintStatus.resolved;
 
     return SafeArea(
       child: Padding(
@@ -716,9 +901,9 @@ class _ComplaintDetailsState extends State<_ComplaintDetails> {
             children: [
               Text(
                 "Ticket ${c.id}",
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w900,
-                    ),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
               ),
               const SizedBox(height: AppSpacing.sm),
               Wrap(
@@ -736,34 +921,34 @@ class _ComplaintDetailsState extends State<_ComplaintDetails> {
               const SizedBox(height: AppSpacing.md),
               Text(
                 c.description,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
+                style: Theme.of(
+                  context,
+                ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: AppSpacing.md),
               Text(
                 "Before photos",
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
               ),
               const SizedBox(height: AppSpacing.sm),
               _imageStrip(context, c.beforeImagePaths),
               const SizedBox(height: AppSpacing.md),
               Text(
                 "After photos",
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
               ),
               const SizedBox(height: AppSpacing.sm),
               _imageStrip(context, c.afterImagePaths),
               const SizedBox(height: AppSpacing.md),
               Text(
                 "AI notes",
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
               ),
               const SizedBox(height: 6),
               Text(
@@ -771,9 +956,9 @@ class _ComplaintDetailsState extends State<_ComplaintDetails> {
                     ? "No AI explanation available."
                     : c.aiReasons.join(" • "),
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: scheme.onSurfaceVariant,
-                      fontWeight: FontWeight.w600,
-                    ),
+                  color: scheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
               const SizedBox(height: AppSpacing.lg),
 
@@ -790,9 +975,9 @@ class _ComplaintDetailsState extends State<_ComplaintDetails> {
                   child: Text(
                     "In queue. You'll be able to start once promoted to Assigned.",
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                          color: scheme.onSurfaceVariant,
-                        ),
+                      fontWeight: FontWeight.w700,
+                      color: scheme.onSurfaceVariant,
+                    ),
                   ),
                 )
               else
@@ -816,11 +1001,14 @@ class _ComplaintDetailsState extends State<_ComplaintDetails> {
                               ? const SizedBox(
                                   height: 18,
                                   width: 18,
-                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
                                 )
                               : const Icon(Icons.build_rounded),
-                          onPressed:
-                              _isResolving ? null : () => _resolveWithPhotos(c, techId),
+                          onPressed: _isResolving
+                              ? null
+                              : () => _resolveWithPhotos(c, techId),
                           label: const Text("Resolve (attach fixed photos)"),
                         ),
                       ),
@@ -838,7 +1026,7 @@ class _ComplaintDetailsState extends State<_ComplaintDetails> {
                                 return AlertDialog(
                                   title: const Text("Close ticket"),
                                   content: const Text(
-                                    "Close after verifying the fixed solution.",
+                                    "Close after verifying fixed solution.",
                                   ),
                                   actions: [
                                     TextButton(
@@ -859,17 +1047,20 @@ class _ComplaintDetailsState extends State<_ComplaintDetails> {
                             if (!context.mounted) return;
                             if (confirmed == true) {
                               context.read<ComplaintProvider>().closeComplaint(
-                                    complaintId: c.id,
-                                  );
-                              context.read<NotificationProvider>().add(AppNotification(
-                                    id: 'n-${DateTime.now().millisecondsSinceEpoch}',
-                                    complaintId: c.id,
-                                    type: NotificationType.closed,
-                                    title: 'Closed',
-                                    body: 'Your complaint ${c.id} has been closed.',
-                                    createdAt: DateTime.now(),
-                                    studentId: c.studentId,
-                                  ));
+                                complaintId: c.id,
+                              );
+                              context.read<NotificationProvider>().add(
+                                AppNotification(
+                                  id: 'n-${DateTime.now().millisecondsSinceEpoch}',
+                                  complaintId: c.id,
+                                  type: NotificationType.closed,
+                                  title: 'Closed',
+                                  body:
+                                      'Your complaint ${c.id} has been closed.',
+                                  createdAt: DateTime.now(),
+                                  studentId: c.studentId,
+                                ),
+                              );
                               AppMessenger.showSnack("Closed ${c.id}");
                               Navigator.pop(context);
                             }
@@ -902,9 +1093,9 @@ class _ComplaintDetailsState extends State<_ComplaintDetails> {
       child: Text(
         "$k: $v",
         style: Theme.of(context).textTheme.labelMedium?.copyWith(
-              color: scheme.onSurface,
-              fontWeight: FontWeight.w800,
-            ),
+          color: scheme.onSurface,
+          fontWeight: FontWeight.w800,
+        ),
       ),
     );
   }
@@ -914,9 +1105,9 @@ class _ComplaintDetailsState extends State<_ComplaintDetails> {
       return Text(
         "None",
         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-              fontWeight: FontWeight.w600,
-            ),
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+          fontWeight: FontWeight.w600,
+        ),
       );
     }
     return SizedBox(
@@ -982,7 +1173,11 @@ class _TechNotificationButton extends StatelessWidget {
               ),
               child: Text(
                 unreadCount > 99 ? '99+' : '$unreadCount',
-                style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: Colors.white),
+                style: const TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w900,
+                  color: Colors.white,
+                ),
               ),
             ),
           ),
@@ -1005,10 +1200,17 @@ class _TechNotificationButton extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(AppSpacing.lg, 0, AppSpacing.lg, AppSpacing.md),
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.lg,
+                0,
+                AppSpacing.lg,
+                AppSpacing.md,
+              ),
               child: Text(
                 'Notifications',
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
               ),
             ),
             Flexible(
@@ -1019,12 +1221,21 @@ class _TechNotificationButton extends StatelessWidget {
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(Icons.notifications_none, size: 48, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                            Icon(
+                              Icons.notifications_none,
+                              size: 48,
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSurfaceVariant,
+                            ),
                             const SizedBox(height: 12),
                             Text(
                               'No notifications yet',
-                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                              style: Theme.of(context).textTheme.bodyMedium
+                                  ?.copyWith(
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.onSurfaceVariant,
                                   ),
                             ),
                           ],
@@ -1033,18 +1244,39 @@ class _TechNotificationButton extends StatelessWidget {
                     )
                   : ListView.separated(
                       shrinkWrap: true,
-                      padding: const EdgeInsets.fromLTRB(AppSpacing.lg, 0, AppSpacing.lg, AppSpacing.xl),
+                      padding: const EdgeInsets.fromLTRB(
+                        AppSpacing.lg,
+                        0,
+                        AppSpacing.lg,
+                        AppSpacing.xl,
+                      ),
                       itemCount: notifications.length,
-                      separatorBuilder: (context, index) => const SizedBox(height: 8),
+                      separatorBuilder: (context, index) =>
+                          const SizedBox(height: 8),
                       itemBuilder: (context, i) {
                         final n = notifications[i];
                         return ListTile(
                           leading: CircleAvatar(
-                            backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-                            child: Icon(Icons.assignment, color: Theme.of(context).colorScheme.onPrimaryContainer, size: 20),
+                            backgroundColor: Theme.of(
+                              context,
+                            ).colorScheme.primaryContainer,
+                            child: Icon(
+                              Icons.assignment,
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onPrimaryContainer,
+                              size: 20,
+                            ),
                           ),
-                          title: Text(n.title, style: const TextStyle(fontWeight: FontWeight.w700)),
-                          subtitle: Text(n.body, maxLines: 2, overflow: TextOverflow.ellipsis),
+                          title: Text(
+                            n.title,
+                            style: const TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                          subtitle: Text(
+                            n.body,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         );
                       },
                     ),

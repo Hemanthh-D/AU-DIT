@@ -1,10 +1,12 @@
 import 'package:go_router/go_router.dart';
 import 'package:flutter/widgets.dart';
+import '../../screens/onboarding_screen.dart';
 
 import '../session/session_provider.dart';
 import '../../screens/admin_dashboard.dart';
 import '../../screens/dashboard_screen.dart';
 import '../../screens/login_screen.dart';
+
 import '../../screens/profile_screen.dart';
 import '../../screens/student_shell.dart';
 import '../../screens/submit_complaint.dart';
@@ -14,17 +16,18 @@ import '../../screens/technician_panel.dart';
 class AppRouter {
   static GoRouter create(SessionProvider session) {
     return GoRouter(
-      initialLocation: '/login',
+      initialLocation: '/',
       refreshListenable: session,
       redirect: (context, state) {
         final loggedIn = session.isLoggedIn;
+        final isOnboarding = state.matchedLocation == '/';
         final isLogin = state.matchedLocation == '/login';
 
         if (!loggedIn) {
-          return isLogin ? null : '/login';
+          return isLogin || isOnboarding ? null : '/login';
         }
 
-        if (isLogin) {
+        if (isLogin || isOnboarding) {
           return switch (session.role) {
             UserRole.admin => '/admin',
             UserRole.technician => '/tech',
@@ -37,6 +40,10 @@ class AppRouter {
       },
       routes: [
         GoRoute(
+          path: '/',
+          builder: (context, state) => OnboardingScreen(),
+        ),
+        GoRoute(
           path: '/login',
           builder: (context, state) => const LoginScreen(),
         ),
@@ -45,19 +52,23 @@ class AppRouter {
           routes: [
             GoRoute(
               path: '/student/home',
-              pageBuilder: (context, state) => _fade(state, const DashboardScreen()),
+              pageBuilder: (context, state) =>
+                  _fade(state, const DashboardScreen()),
             ),
             GoRoute(
               path: '/student/submit',
-              pageBuilder: (context, state) => _fade(state, const SubmitComplaintScreen()),
+              pageBuilder: (context, state) =>
+                  _fade(state, const SubmitComplaintScreen()),
             ),
             GoRoute(
               path: '/student/status',
-              pageBuilder: (context, state) => _fade(state, const ComplaintStatusScreen()),
+              pageBuilder: (context, state) =>
+                  _fade(state, const ComplaintStatusScreen()),
             ),
             GoRoute(
               path: '/student/profile',
-              pageBuilder: (context, state) => _fade(state, const ProfileScreen()),
+              pageBuilder: (context, state) =>
+                  _fade(state, const ProfileScreen()),
             ),
           ],
         ),
@@ -79,16 +90,20 @@ CustomTransitionPage<void> _fade(GoRouterState state, Widget child) {
     key: state.pageKey,
     child: child,
     transitionsBuilder: (context, animation, secondaryAnimation, child) {
-      final curved = CurvedAnimation(parent: animation, curve: Curves.easeOutCubic);
+      final curved = CurvedAnimation(
+        parent: animation,
+        curve: Curves.easeOutCubic,
+      );
       return FadeTransition(
         opacity: curved,
         child: SlideTransition(
-          position: Tween<Offset>(begin: const Offset(0, 0.02), end: Offset.zero)
-              .animate(curved),
+          position: Tween<Offset>(
+            begin: const Offset(0, 0.02),
+            end: Offset.zero,
+          ).animate(curved),
           child: child,
         ),
       );
     },
   );
 }
-
